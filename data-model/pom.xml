@@ -4,23 +4,13 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
     <modelVersion>4.0.0</modelVersion>
-    <artifactId>spark-training</artifactId>
-    <version>1.0-SNAPSHOT</version>
-    <packaging>pom</packaging>
-    <name>Apache Spark Training</name>
+    <artifactId>data-model</artifactId>
+    <name>Data model</name>
 
     <parent>
         <groupId>com.bigdatapassion</groupId>
-        <artifactId>big-data-training</artifactId>
+        <artifactId>spark-training</artifactId>
         <version>1.0-SNAPSHOT</version>
     </parent>
-
-    <modules>
-        <module>data-model</module>
-        <module>spark-core</module>
-        <module>spark-sql</module>
-        <module>spark-mllib</module>
-        <module>spark-streaming</module>
-    </modules>
 
 </project>
