@@ -44,7 +44,7 @@ trait BaseSparkApp extends ClusterApp {
   def createSparkContext: SparkContext = {
 
     val conf = new SparkConf().
-      setMaster(master).
+//      setMaster(master).
       setAppName(user + " " + this.getClass.getSimpleName)
 
     val sc = new SparkContext(conf)
