@@ -15,7 +15,7 @@ trait ClusterApp {
   /**
     * Directory path with sample data
     */
-  val dataPath: String = "/dane"
+  val dataPath: String = "/bigdatapassion"
 
   /**
     * Output path (results)

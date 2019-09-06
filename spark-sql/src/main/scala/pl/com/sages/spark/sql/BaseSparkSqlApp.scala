@@ -12,7 +12,7 @@ trait BaseSparkSqlApp extends BaseSparkApp {
 
     SparkSession.builder().
       config(conf).
-      master(master).
+//      master(master).
       getOrCreate()
 
   }
