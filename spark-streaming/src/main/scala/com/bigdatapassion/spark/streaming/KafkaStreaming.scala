@@ -1,49 +1,56 @@
 package com.bigdatapassion.spark.streaming
 
-import org.apache.kafka.common.serialization.StringDeserializer
-import org.apache.spark.streaming.kafka010.{ConsumerStrategies, KafkaUtils, LocationStrategies}
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.streaming.Trigger
 import com.bigdatapassion.spark.core.BaseSparkApp
 
 object KafkaStreaming extends BaseSparkStreamingApp with BaseSparkApp {
 
-  def main(args: Array[String]) {
+  def main(args: Array[String]): Unit = {
 
-    val ssc = createStreamingContext
+    val spark = createSparkSession
+    import spark.implicits._
 
-    val kafkaParams = Map[String, Object](
-      "bootstrap.servers" -> kafkaBootstrapServers,
-      "key.deserializer" -> classOf[StringDeserializer],
-      "value.deserializer" -> classOf[StringDeserializer],
-      "group.id" -> kafkaGroupId,
-      "auto.offset.reset" -> "latest",
-      "enable.auto.commit" -> (false: java.lang.Boolean)
-    )
+    // Read from Kafka using Structured Streaming
+    val kafkaDF = spark.readStream
+      .format("kafka")
+      .option("kafka.bootstrap.servers", kafkaBootstrapServers)
+      .option("subscribe", kafkaTopics)
+      .option("startingOffsets", "latest")
+      .option("kafka.group.id", kafkaGroupId)
+      .load()
 
-    val topics = Array(kafkaTopics)
+    // Extract the value as string
+    val messages = kafkaDF
+      .selectExpr("CAST(value AS STRING) as message")
 
-    val messages = KafkaUtils.createDirectStream[String, String](
-      ssc,
-      LocationStrategies.PreferConsistent,
-      ConsumerStrategies.Subscribe[String, String](topics, kafkaParams)
-    )
+    // Print raw messages to console
+    val messagesQuery = messages.writeStream
+      .outputMode("append")
+      .format("console")
+      .trigger(Trigger.ProcessingTime("5 seconds"))
+      .queryName("kafka-messages")
+      .start()
 
-    // Get the lines, split them into words, count the words and print
-    val lines = messages.map(_.value)
-    lines.print()
-    lines.count().print()
+    // Word count - split messages into words and count
+    val words = messages
+      .select(explode(split($"message", " ")).as("word"))
+      .filter($"word" =!= "")
 
-    val words = lines.flatMap(_.split(" "))
-    words.print()
-    words.count().print()
+    val wordCounts = words
+      .groupBy($"word")
+      .count()
 
-    val wordCounts = words.map(x => (x, 1L)).reduceByKey(_ + _)
+    // Output word counts to console
+    val wordCountQuery = wordCounts.writeStream
+      .outputMode("complete")
+      .format("console")
+      .trigger(Trigger.ProcessingTime("5 seconds"))
+      .queryName("kafka-word-count")
+      .start()
 
-    wordCounts.print()
-    wordCounts.count().print()
-
-    // Start the computation
-    ssc.start()
-    ssc.awaitTermination()
+    // Wait for termination
+    spark.streams.awaitAnyTermination()
   }
 
 }

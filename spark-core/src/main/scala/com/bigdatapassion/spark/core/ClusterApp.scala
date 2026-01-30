@@ -10,7 +10,7 @@ trait ClusterApp {
   /**
     * Where to run master process
     */
-  val master: String = "yarn"
+  val master: String = "local[*]"
 
   /**
     * Directory path with sample data

@@ -13,7 +13,7 @@ trait BaseSparkApp extends ClusterApp {
   /**
     * Kafka params for Spark Streaming
     */
-  val kafkaBootstrapServers = "cluster_kafka1:9092,cluster_kafka2:9092,cluster_kafka3:9092"
+  val kafkaBootstrapServers = "localhost:9092"
   val kafkaTopics = "test-topic"
   val kafkaGroupId = "spark-streaming"
 

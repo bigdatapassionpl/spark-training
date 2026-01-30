@@ -21,7 +21,7 @@ object KMeansExample extends BaseSparkApp {
     val model = kmeans.fit(dataset)
 
     // Evaluate clustering by computing Within Set Sum of Squared Errors.
-    val WSSSE = model.computeCost(dataset)
+    val WSSSE = model.summary.trainingCost
     println(s"Within Set Sum of Squared Errors = $WSSSE")
 
     // Shows the result.

@@ -1,0 +1,15 @@
+transport:
+  type: composite
+  transports:
+    file:
+      type: file
+      location: /tmp/openlineage
+      fileNamePrefix: spark_events
+    marquez:
+      type: http
+      url: http://localhost:5050
+      endpoint: api/v1/lineage
+      timeoutInMillis: 5000
+
+spark:
+  namespace: spark-streaming
