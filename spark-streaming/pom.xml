@@ -14,12 +14,12 @@
     </parent>
 
     <properties>
-        <jackson.version>2.18.2</jackson.version>
+        <jackson.version>2.15.2</jackson.version>
     </properties>
 
     <dependencies>
 
-        <!-- Jackson - explicit version to fix OpenLineage compatibility -->
+        <!-- Jackson - explicit version for OpenLineage compatibility -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-core</artifactId>
@@ -44,13 +44,6 @@
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jsr310</artifactId>
             <version>${jackson.version}</version>
-        </dependency>
-
-        <!-- Commons Lang 3.14+ required for Spark 4.0 (JAVA_21 support) -->
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-lang3</artifactId>
-            <version>3.14.0</version>
         </dependency>
 
         <dependency>
@@ -84,14 +77,19 @@
         <dependency>
             <groupId>io.openlineage</groupId>
             <artifactId>openlineage-spark_${scala.binary.version}</artifactId>
-            <version>1.42.1</version>
+            <version>1.24.2</version>
+        </dependency>
+        <dependency>
+            <groupId>io.openlineage</groupId>
+            <artifactId>openlineage-java</artifactId>
+            <version>1.24.2</version>
         </dependency>
 
         <!-- Avro support -->
         <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-avro_${scala.binary.version}</artifactId>
-            <version>4.0.0</version>
+            <version>${spark.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.avro</groupId>
@@ -111,6 +109,12 @@
             <version>7.5.1</version>
         </dependency>
 
+        <!-- ABRiS - Avro Bridge for Spark (Schema Registry + OpenLineage integration) -->
+        <dependency>
+            <groupId>za.co.absa</groupId>
+            <artifactId>abris_${scala.binary.version}</artifactId>
+            <version>6.4.1</version>
+        </dependency>
 
     </dependencies>
 
@@ -119,6 +123,33 @@
             <plugin>
                 <groupId>net.alchim31.maven</groupId>
                 <artifactId>scala-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <executable>java</executable>
+                    <arguments>
+                        <argument>--add-opens=java.base/java.lang=ALL-UNNAMED</argument>
+                        <argument>--add-opens=java.base/java.lang.invoke=ALL-UNNAMED</argument>
+                        <argument>--add-opens=java.base/java.lang.reflect=ALL-UNNAMED</argument>
+                        <argument>--add-opens=java.base/java.io=ALL-UNNAMED</argument>
+                        <argument>--add-opens=java.base/java.net=ALL-UNNAMED</argument>
+                        <argument>--add-opens=java.base/java.nio=ALL-UNNAMED</argument>
+                        <argument>--add-opens=java.base/java.util=ALL-UNNAMED</argument>
+                        <argument>--add-opens=java.base/java.util.concurrent=ALL-UNNAMED</argument>
+                        <argument>--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED</argument>
+                        <argument>--add-opens=java.base/sun.nio.ch=ALL-UNNAMED</argument>
+                        <argument>--add-opens=java.base/sun.nio.cs=ALL-UNNAMED</argument>
+                        <argument>--add-opens=java.base/sun.security.action=ALL-UNNAMED</argument>
+                        <argument>--add-opens=java.base/sun.util.calendar=ALL-UNNAMED</argument>
+                        <argument>--add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED</argument>
+                        <argument>-classpath</argument>
+                        <classpath/>
+                        <argument>${exec.mainClass}</argument>
+                    </arguments>
+                </configuration>
             </plugin>
         </plugins>
     </build>

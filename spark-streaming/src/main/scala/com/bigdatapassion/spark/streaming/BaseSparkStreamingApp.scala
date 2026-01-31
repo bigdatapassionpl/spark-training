@@ -22,7 +22,7 @@ trait BaseSparkStreamingApp extends BaseSparkApp {
       .config("spark.openlineage.transport.type", "composite")
       .config("spark.openlineage.transport.transports.console.type", "console")
       .config("spark.openlineage.transport.transports.file.type", "file")
-      .config("spark.openlineage.transport.transports.file.location", "/tmp/openlineage")
+      .config("spark.openlineage.transport.transports.file.location", "/Users/radek/projects/bigdatapassion/spark-training/openlineage.json")
       .config("spark.openlineage.transport.transports.marquez.type", "http")
       .config("spark.openlineage.transport.transports.marquez.url", "http://localhost:5050")
       .config("spark.openlineage.transport.transports.marquez.endpoint", "api/v1/lineage")
