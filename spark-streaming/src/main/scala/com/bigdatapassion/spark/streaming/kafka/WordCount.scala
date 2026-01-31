@@ -1,10 +1,11 @@
-package com.bigdatapassion.spark.streaming
+package com.bigdatapassion.spark.streaming.kafka
 
+import com.bigdatapassion.spark.core.BaseSparkApp
+import com.bigdatapassion.spark.streaming.BaseSparkStreamingApp
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.streaming.Trigger
-import com.bigdatapassion.spark.core.BaseSparkApp
 
-object KafkaStreaming extends BaseSparkStreamingApp with BaseSparkApp {
+object WordCount extends BaseSparkStreamingApp with BaseSparkApp {
 
   def main(args: Array[String]): Unit = {
 
