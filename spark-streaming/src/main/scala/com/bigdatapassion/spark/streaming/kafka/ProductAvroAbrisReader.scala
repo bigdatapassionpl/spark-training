@@ -39,23 +39,15 @@ object ProductAvroAbrisReader {
       openlineageFileLocation = openlineageFileLocation
     )
 
-    // Create Spark session with OpenLineage listener
+    // Create Spark session WITHOUT OpenLineage listener
+    // We use our custom SchemaRegistryOpenLineageEmitter instead to ensure
+    // every event includes the full schema from Schema Registry
     val spark = SparkSession.builder()
       .master(master)
       .appName(s"$user ProductAvroAbrisReader")
       .config("spark.driver.host", "127.0.0.1")
       .config("spark.driver.bindAddress", "127.0.0.1")
-      .config("spark.extraListeners", "io.openlineage.spark.agent.OpenLineageSparkListener")
       .config("spark.security.credentials.kafka.enabled", "false")
-      // OpenLineage transport configuration
-      .config("spark.openlineage.transport.type", "composite")
-      .config("spark.openlineage.transport.transports.console.type", "console")
-      .config("spark.openlineage.transport.transports.file.type", "file")
-      .config("spark.openlineage.transport.transports.file.location", openlineageFileLocation)
-      .config("spark.openlineage.transport.transports.marquez.type", "http")
-      .config("spark.openlineage.transport.transports.marquez.url", "http://localhost:5050")
-      .config("spark.openlineage.transport.transports.marquez.endpoint", "api/v1/lineage")
-      .config("spark.openlineage.namespace", openlineageNamespace)
       .getOrCreate()
 
     import spark.implicits._
@@ -99,25 +91,31 @@ object ProductAvroAbrisReader {
       .trigger(Trigger.ProcessingTime("5 seconds"))
       .queryName("kafka-avro-products-abris")
       .foreachBatch { (batchDF: org.apache.spark.sql.DataFrame, batchId: Long) =>
-        val recordCount = batchDF.count()
+        // Collect records in a single action
+        val records = batchDF.collect()
+        val recordCount = records.length
 
+        // Print batch to console
+        println(s"\n--- Batch $batchId ($recordCount records) ---")
         if (recordCount > 0) {
-          // Print batch to console
+          records.foreach(println)
+
           println(s"\n--- Batch $batchId ---")
           batchDF.show(truncate = false)
-
-          // Emit OpenLineage RUNNING event with current schema from Schema Registry
-          SchemaRegistryOpenLineageEmitter.emitRunningEventWithSchema(
-            runId = runId,
-            schemaRegistryUrl = schemaRegistryUrl,
-            topic = avroTopic,
-            namespace = openlineageNamespace,
-            jobName = openlineageJobName,
-            openlineageFileLocation = openlineageFileLocation,
-            batchId = batchId,
-            recordCount = recordCount
-          )
         }
+
+        // Always emit OpenLineage RUNNING event with current schema from Schema Registry
+        // This tracks schema even for empty batches (useful for schema evolution monitoring)
+        SchemaRegistryOpenLineageEmitter.emitRunningEventWithSchema(
+          runId = runId,
+          schemaRegistryUrl = schemaRegistryUrl,
+          topic = avroTopic,
+          namespace = openlineageNamespace,
+          jobName = openlineageJobName,
+          openlineageFileLocation = openlineageFileLocation,
+          batchId = batchId,
+          recordCount = recordCount
+        )
       }
       .start()
 

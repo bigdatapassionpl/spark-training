@@ -2,7 +2,7 @@ package com.bigdatapassion.spark.streaming.openlineage
 
 import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient
 import io.openlineage.client.OpenLineage
-import io.openlineage.client.transports.FileConfig
+import io.openlineage.client.transports.{ConsoleTransport, FileTransport, HttpTransport, FileConfig, HttpConfig}
 
 import java.net.URI
 import java.time.ZonedDateTime
@@ -11,6 +11,7 @@ import java.util.UUID
 /**
  * Emits custom OpenLineage events with Schema Registry metadata.
  * This provides full schema registry information in the lineage events.
+ * Uses OpenLineage client with composite transport (file + HTTP + console).
  */
 object SchemaRegistryOpenLineageEmitter {
 
@@ -25,7 +26,8 @@ object SchemaRegistryOpenLineageEmitter {
     topic: String,
     namespace: String,
     jobName: String,
-    openlineageFileLocation: String
+    openlineageFileLocation: String,
+    marquezUrl: String = "http://localhost:5050"
   ): UUID = {
 
     // Fetch schema from registry
@@ -117,8 +119,8 @@ object SchemaRegistryOpenLineageEmitter {
       .inputs(inputs)
       .build()
 
-    // Write to file
-    writeEventToFile(startEvent, openlineageFileLocation)
+    // Emit via OpenLineage transport (file + Marquez + console)
+    emitEvent(startEvent, openlineageFileLocation, marquezUrl)
 
     println("=" * 80)
     println("OPENLINEAGE EVENT EMITTED WITH SCHEMA REGISTRY METADATA")
@@ -180,24 +182,42 @@ object SchemaRegistryOpenLineageEmitter {
     }
   }
 
-  private def writeEventToFile(event: OpenLineage.RunEvent, filePath: String): Unit = {
-    import com.fasterxml.jackson.databind.ObjectMapper
-    import com.fasterxml.jackson.databind.SerializationFeature
-    import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
-    import java.io.{File, FileWriter, PrintWriter}
+  // Lazy-initialized transports
+  private var fileTransport: FileTransport = _
+  private var httpTransport: HttpTransport = _
+  private var consoleTransport: ConsoleTransport = _
 
-    val mapper = new ObjectMapper()
-    mapper.registerModule(new JavaTimeModule())
-    mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
-
-    val json = mapper.writeValueAsString(event)
-
-    val writer = new PrintWriter(new FileWriter(new File(filePath), true))
-    try {
-      writer.println(json)
-    } finally {
-      writer.close()
+  private def getFileTransport(fileLocation: String): FileTransport = {
+    if (fileTransport == null) {
+      val fileConfig = new FileConfig()
+      fileConfig.setLocation(fileLocation)
+      fileTransport = new FileTransport(fileConfig)
     }
+    fileTransport
+  }
+
+  private def getHttpTransport(marquezUrl: String): HttpTransport = {
+    if (httpTransport == null) {
+      val httpConfig = new HttpConfig()
+      httpConfig.setUrl(URI.create(marquezUrl))
+      httpConfig.setEndpoint("api/v1/lineage")
+      httpTransport = new HttpTransport(httpConfig)
+    }
+    httpTransport
+  }
+
+  private def getConsoleTransport(): ConsoleTransport = {
+    if (consoleTransport == null) {
+      consoleTransport = new ConsoleTransport()
+    }
+    consoleTransport
+  }
+
+  private def emitEvent(event: OpenLineage.RunEvent, fileLocation: String, marquezUrl: String): Unit = {
+    // Emit to all transports
+    getFileTransport(fileLocation).emit(event)
+    getHttpTransport(marquezUrl).emit(event)
+    getConsoleTransport().emit(event)
   }
 
   /**
@@ -212,7 +232,8 @@ object SchemaRegistryOpenLineageEmitter {
     jobName: String,
     openlineageFileLocation: String,
     batchId: Long,
-    recordCount: Long
+    recordCount: Long,
+    marquezUrl: String = "http://localhost:5050"
   ): Unit = {
     // Fetch current schema from registry (may have changed since start)
     if (schemaRegistryClient == null) {
@@ -299,7 +320,7 @@ object SchemaRegistryOpenLineageEmitter {
       .inputs(inputs)
       .build()
 
-    writeEventToFile(runningEvent, openlineageFileLocation)
+    emitEvent(runningEvent, openlineageFileLocation, marquezUrl)
 
     println(s"[Batch $batchId] Emitted RUNNING event - Schema ID: ${metadata.getId}, Version: ${metadata.getVersion}, Records: $recordCount")
   }
@@ -313,7 +334,8 @@ object SchemaRegistryOpenLineageEmitter {
     jobName: String,
     openlineageFileLocation: String,
     schemaRegistryUrl: String = null,
-    topic: String = null
+    topic: String = null,
+    marquezUrl: String = "http://localhost:5050"
   ): Unit = {
     val openLineage = new OpenLineage(URI.create(producer))
 
@@ -367,6 +389,6 @@ object SchemaRegistryOpenLineageEmitter {
       completeEventBuilder.inputs(inputs)
     }
 
-    writeEventToFile(completeEventBuilder.build(), openlineageFileLocation)
+    emitEvent(completeEventBuilder.build(), openlineageFileLocation, marquezUrl)
   }
 }
