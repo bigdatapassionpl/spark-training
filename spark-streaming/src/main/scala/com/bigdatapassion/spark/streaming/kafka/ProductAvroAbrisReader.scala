@@ -93,22 +93,43 @@ object ProductAvroAbrisReader {
       $"productMessage.product.promotionCode"
     )
 
-    // Print to console
+    // Use foreachBatch to emit OpenLineage RUNNING events with schema for each micro-batch
     val query = productsDF.writeStream
       .outputMode("append")
-      .format("console")
-      .option("truncate", "false")
       .trigger(Trigger.ProcessingTime("5 seconds"))
       .queryName("kafka-avro-products-abris")
+      .foreachBatch { (batchDF: org.apache.spark.sql.DataFrame, batchId: Long) =>
+        val recordCount = batchDF.count()
+
+        if (recordCount > 0) {
+          // Print batch to console
+          println(s"\n--- Batch $batchId ---")
+          batchDF.show(truncate = false)
+
+          // Emit OpenLineage RUNNING event with current schema from Schema Registry
+          SchemaRegistryOpenLineageEmitter.emitRunningEventWithSchema(
+            runId = runId,
+            schemaRegistryUrl = schemaRegistryUrl,
+            topic = avroTopic,
+            namespace = openlineageNamespace,
+            jobName = openlineageJobName,
+            openlineageFileLocation = openlineageFileLocation,
+            batchId = batchId,
+            recordCount = recordCount
+          )
+        }
+      }
       .start()
 
-    // Add shutdown hook to emit COMPLETE event
+    // Add shutdown hook to emit COMPLETE event with final schema
     Runtime.getRuntime.addShutdownHook(new Thread(() => {
       SchemaRegistryOpenLineageEmitter.emitCompleteEvent(
         runId = runId,
         namespace = openlineageNamespace,
         jobName = openlineageJobName,
-        openlineageFileLocation = openlineageFileLocation
+        openlineageFileLocation = openlineageFileLocation,
+        schemaRegistryUrl = schemaRegistryUrl,
+        topic = avroTopic
       )
       println(s"Emitted OpenLineage COMPLETE event for run: $runId")
     }))

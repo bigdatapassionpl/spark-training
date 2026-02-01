@@ -201,15 +201,152 @@ object SchemaRegistryOpenLineageEmitter {
   }
 
   /**
-   * Emits an OpenLineage COMPLETE event.
+   * Emits an OpenLineage RUNNING event with current schema from Schema Registry.
+   * Use this to track schema changes during streaming execution.
+   */
+  def emitRunningEventWithSchema(
+    runId: UUID,
+    schemaRegistryUrl: String,
+    topic: String,
+    namespace: String,
+    jobName: String,
+    openlineageFileLocation: String,
+    batchId: Long,
+    recordCount: Long
+  ): Unit = {
+    // Fetch current schema from registry (may have changed since start)
+    if (schemaRegistryClient == null) {
+      schemaRegistryClient = new CachedSchemaRegistryClient(schemaRegistryUrl, 100)
+    }
+
+    val subject = s"$topic-value"
+    val metadata = schemaRegistryClient.getLatestSchemaMetadata(subject)
+
+    val openLineage = new OpenLineage(URI.create(producer))
+
+    // Parse Avro schema to extract fields
+    val schemaFields = new java.util.ArrayList[OpenLineage.SchemaDatasetFacetFields]()
+    val avroSchema = new org.apache.avro.Schema.Parser().parse(metadata.getSchema)
+    addSchemaFields(openLineage, schemaFields, avroSchema, "")
+
+    val schemaFacet = openLineage.newSchemaDatasetFacetBuilder()
+      .fields(schemaFields)
+      .build()
+
+    // Create input dataset with current schema
+    val inputDataset = openLineage.newInputDatasetBuilder()
+      .namespace(s"kafka://localhost:9092")
+      .name(topic)
+      .facets(
+        openLineage.newDatasetFacetsBuilder()
+          .schema(schemaFacet)
+          .dataSource(
+            openLineage.newDatasourceDatasetFacetBuilder()
+              .name(s"kafka://localhost:9092")
+              .uri(URI.create(s"kafka://localhost:9092/$topic"))
+              .build()
+          )
+          .build()
+      )
+      .inputFacets(
+        openLineage.newInputDatasetInputFacetsBuilder()
+          .build()
+      )
+      .build()
+
+    val inputs = java.util.Arrays.asList(inputDataset)
+
+    val job = openLineage.newJobBuilder()
+      .namespace(namespace)
+      .name(jobName)
+      .facets(
+        openLineage.newJobFacetsBuilder()
+          .jobType(
+            openLineage.newJobTypeJobFacetBuilder()
+              .processingType("STREAMING")
+              .integration("SPARK")
+              .jobType("APPLICATION")
+              .build()
+          )
+          .documentation(
+            openLineage.newDocumentationJobFacetBuilder()
+              .description(
+                s"""Schema Registry Integration (Batch $batchId):
+                   |  URL: $schemaRegistryUrl
+                   |  Subject: $subject
+                   |  Schema ID: ${metadata.getId}
+                   |  Schema Version: ${metadata.getVersion}
+                   |  Schema Type: ${metadata.getSchemaType}
+                   |  Records in batch: $recordCount
+                   |""".stripMargin
+              )
+              .build()
+          )
+          .build()
+      )
+      .build()
+
+    val run = openLineage.newRunBuilder()
+      .runId(runId)
+      .facets(openLineage.newRunFacetsBuilder().build())
+      .build()
+
+    val runningEvent = openLineage.newRunEventBuilder()
+      .eventType(OpenLineage.RunEvent.EventType.RUNNING)
+      .eventTime(ZonedDateTime.now())
+      .run(run)
+      .job(job)
+      .inputs(inputs)
+      .build()
+
+    writeEventToFile(runningEvent, openlineageFileLocation)
+
+    println(s"[Batch $batchId] Emitted RUNNING event - Schema ID: ${metadata.getId}, Version: ${metadata.getVersion}, Records: $recordCount")
+  }
+
+  /**
+   * Emits an OpenLineage COMPLETE event with final schema from Schema Registry.
    */
   def emitCompleteEvent(
     runId: UUID,
     namespace: String,
     jobName: String,
-    openlineageFileLocation: String
+    openlineageFileLocation: String,
+    schemaRegistryUrl: String = null,
+    topic: String = null
   ): Unit = {
     val openLineage = new OpenLineage(URI.create(producer))
+
+    // Optionally include schema in COMPLETE event
+    val inputs = if (schemaRegistryUrl != null && topic != null) {
+      if (schemaRegistryClient == null) {
+        schemaRegistryClient = new CachedSchemaRegistryClient(schemaRegistryUrl, 100)
+      }
+      val subject = s"$topic-value"
+      val metadata = schemaRegistryClient.getLatestSchemaMetadata(subject)
+
+      val schemaFields = new java.util.ArrayList[OpenLineage.SchemaDatasetFacetFields]()
+      val avroSchema = new org.apache.avro.Schema.Parser().parse(metadata.getSchema)
+      addSchemaFields(openLineage, schemaFields, avroSchema, "")
+
+      val schemaFacet = openLineage.newSchemaDatasetFacetBuilder()
+        .fields(schemaFields)
+        .build()
+
+      val inputDataset = openLineage.newInputDatasetBuilder()
+        .namespace(s"kafka://localhost:9092")
+        .name(topic)
+        .facets(
+          openLineage.newDatasetFacetsBuilder()
+            .schema(schemaFacet)
+            .build()
+        )
+        .build()
+
+      java.util.Arrays.asList(inputDataset)
+    } else {
+      null
+    }
 
     val run = openLineage.newRunBuilder()
       .runId(runId)
@@ -220,13 +357,16 @@ object SchemaRegistryOpenLineageEmitter {
       .name(jobName)
       .build()
 
-    val completeEvent = openLineage.newRunEventBuilder()
+    val completeEventBuilder = openLineage.newRunEventBuilder()
       .eventType(OpenLineage.RunEvent.EventType.COMPLETE)
       .eventTime(ZonedDateTime.now())
       .run(run)
       .job(job)
-      .build()
 
-    writeEventToFile(completeEvent, openlineageFileLocation)
+    if (inputs != null) {
+      completeEventBuilder.inputs(inputs)
+    }
+
+    writeEventToFile(completeEventBuilder.build(), openlineageFileLocation)
   }
 }
