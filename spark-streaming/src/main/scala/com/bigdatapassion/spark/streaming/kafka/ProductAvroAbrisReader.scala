@@ -24,7 +24,7 @@ object ProductAvroAbrisReader {
   val avroTopic = "test-product-avro"
 
   // OpenLineage configuration
-  val openlineageNamespace = "spark-streaming"
+  val openlineageNamespace = "spark-streaming-kafka-avro-schema"
   val openlineageJobName = "product_avro_abris_reader"
   val openlineageFileLocation = "/Users/radek/projects/bigdatapassion/spark-training/openlineage.json"
 

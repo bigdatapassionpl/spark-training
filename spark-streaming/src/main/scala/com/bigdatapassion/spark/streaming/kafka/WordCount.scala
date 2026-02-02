@@ -9,7 +9,7 @@ object WordCount extends BaseSparkStreamingApp with BaseSparkApp {
 
   def main(args: Array[String]): Unit = {
 
-    val spark = createSparkSession
+    val spark = createSparkSession("spark-streaming-kafka-simple")
     import spark.implicits._
 
     // Read from Kafka using Structured Streaming

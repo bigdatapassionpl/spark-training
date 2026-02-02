@@ -16,7 +16,7 @@ object ProductAvroReader extends BaseSparkStreamingApp {
 
   def main(args: Array[String]): Unit = {
 
-    val spark = createSparkSession
+    val spark = createSparkSession("spark-streaming-kafka-avro")
     import spark.implicits._
 
     // Fetch schema from Confluent Schema Registry

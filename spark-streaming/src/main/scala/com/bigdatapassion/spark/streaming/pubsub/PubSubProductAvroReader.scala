@@ -35,7 +35,7 @@ object PubSubProductAvroReader extends BaseSparkStreamingApp with BaseSparkApp {
   val schemaId = "product-avro-schema"
 
   // OpenLineage configuration
-  val openlineageNamespace = "spark-streaming"
+  val openlineageNamespace = "spark-streaming-pubsub-avro-schema"
   val openlineageJobName = "pubsub_product_avro_reader"
   val openlineageFileLocation = "/Users/radek/projects/bigdatapassion/spark-training/openlineage.json"
 
@@ -54,7 +54,7 @@ object PubSubProductAvroReader extends BaseSparkStreamingApp with BaseSparkApp {
       openlineageFileLocation = openlineageFileLocation
     )
 
-    val spark = createSparkSession
+    val spark = createSparkSession(openlineageNamespace)
     import spark.implicits._
 
     // Fetch schema from GCP Schema Registry

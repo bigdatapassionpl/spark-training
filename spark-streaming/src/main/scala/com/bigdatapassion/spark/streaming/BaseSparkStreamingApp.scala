@@ -9,8 +9,10 @@ trait BaseSparkStreamingApp extends BaseSparkApp {
 
   /**
    * Creates a SparkSession for Structured Streaming with OpenLineage integration.
+   *
+   * @param openlineageNamespace the OpenLineage namespace for this job (appears in Marquez UI)
    */
-  def createSparkSession: SparkSession = {
+  def createSparkSession(openlineageNamespace: String = "spark-streaming"): SparkSession = {
     SparkSession.builder()
       .master(master)
       .appName(user + " " + this.getClass.getSimpleName)
@@ -26,7 +28,7 @@ trait BaseSparkStreamingApp extends BaseSparkApp {
       .config("spark.openlineage.transport.transports.marquez.type", "http")
       .config("spark.openlineage.transport.transports.marquez.url", "http://localhost:5050")
       .config("spark.openlineage.transport.transports.marquez.endpoint", "api/v1/lineage")
-      .config("spark.openlineage.namespace", "spark-streaming")
+      .config("spark.openlineage.namespace", openlineageNamespace)
       .getOrCreate()
   }
 

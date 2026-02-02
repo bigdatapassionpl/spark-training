@@ -37,7 +37,7 @@ object PubSubSparkSimpleReader extends BaseSparkStreamingApp with BaseSparkApp {
 
   def main(args: Array[String]): Unit = {
 
-    val spark = createSparkSession
+    val spark = createSparkSession("spark-streaming-pubsub-simple")
     import spark.implicits._
 
     val subscriptionName = ProjectSubscriptionName.of(gcpProject, subscriptionId)
