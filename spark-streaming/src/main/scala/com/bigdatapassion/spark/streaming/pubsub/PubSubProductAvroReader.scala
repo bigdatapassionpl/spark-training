@@ -2,6 +2,7 @@ package com.bigdatapassion.spark.streaming.pubsub
 
 import com.bigdatapassion.spark.core.BaseSparkApp
 import com.bigdatapassion.spark.streaming.BaseSparkStreamingApp
+import com.bigdatapassion.spark.streaming.openlineage.PubSubOpenLineageEmitter
 import com.google.cloud.pubsub.v1.{AckReplyConsumer, MessageReceiver, SchemaServiceClient, Subscriber}
 import com.google.pubsub.v1.{ProjectSubscriptionName, PubsubMessage, SchemaName}
 import org.apache.spark.sql.Row
@@ -14,7 +15,7 @@ import scala.jdk.CollectionConverters._
 
 /**
  * Spark Streaming application that reads Avro-encoded product messages from Pub/Sub
- * using GCP Schema Registry.
+ * using GCP Schema Registry with OpenLineage integration.
  *
  * Prerequisites:
  * 1. Create a schema in GCP Schema Registry
@@ -33,10 +34,25 @@ object PubSubProductAvroReader extends BaseSparkStreamingApp with BaseSparkApp {
   val subscriptionId = "product-avro-subscription"
   val schemaId = "product-avro-schema"
 
+  // OpenLineage configuration
+  val openlineageNamespace = "spark-streaming"
+  val openlineageJobName = "pubsub_product_avro_reader"
+  val openlineageFileLocation = "/Users/radek/projects/bigdatapassion/spark-training/openlineage.json"
+
   // Processing interval in milliseconds
   val processingIntervalMs = 5000L
 
   def main(args: Array[String]): Unit = {
+
+    // Emit OpenLineage START event with schema from GCP Schema Registry
+    val runId = PubSubOpenLineageEmitter.emitStartEvent(
+      gcpProject = gcpProject,
+      schemaId = schemaId,
+      subscriptionId = subscriptionId,
+      namespace = openlineageNamespace,
+      jobName = openlineageJobName,
+      openlineageFileLocation = openlineageFileLocation
+    )
 
     val spark = createSparkSession
     import spark.implicits._
@@ -73,6 +89,22 @@ object PubSubProductAvroReader extends BaseSparkStreamingApp with BaseSparkApp {
     subscriber.startAsync().awaitRunning()
     println("Pub/Sub subscriber started")
 
+    // Add shutdown hook to emit COMPLETE event
+    Runtime.getRuntime.addShutdownHook(new Thread(() => {
+      PubSubOpenLineageEmitter.emitCompleteEvent(
+        runId = runId,
+        gcpProject = gcpProject,
+        schemaId = schemaId,
+        subscriptionId = subscriptionId,
+        namespace = openlineageNamespace,
+        jobName = openlineageJobName,
+        openlineageFileLocation = openlineageFileLocation
+      )
+      println(s"Emitted OpenLineage COMPLETE event for run: $runId")
+    }))
+
+    var batchId = 0L
+
     try {
       while (true) {
         // Collect messages from buffer
@@ -84,7 +116,9 @@ object PubSubProductAvroReader extends BaseSparkStreamingApp with BaseSparkApp {
         }
 
         if (messages.nonEmpty) {
-          println(s"\n--- Processing ${messages.size} Avro messages ---")
+          batchId += 1
+          val recordCount = messages.size
+          println(s"\n--- Batch $batchId: Processing $recordCount Avro messages ---")
 
           // Create DataFrame with binary data
           val schema = StructType(Seq(
@@ -116,6 +150,19 @@ object PubSubProductAvroReader extends BaseSparkStreamingApp with BaseSparkApp {
           // Print products
           println("Products received:")
           productsDF.show(truncate = false)
+
+          // Emit OpenLineage RUNNING event with schema for this batch
+          PubSubOpenLineageEmitter.emitRunningEventWithSchema(
+            runId = runId,
+            gcpProject = gcpProject,
+            schemaId = schemaId,
+            subscriptionId = subscriptionId,
+            namespace = openlineageNamespace,
+            jobName = openlineageJobName,
+            openlineageFileLocation = openlineageFileLocation,
+            batchId = batchId,
+            recordCount = recordCount
+          )
         }
 
         Thread.sleep(processingIntervalMs)
