@@ -116,6 +116,20 @@
             <version>6.4.1</version>
         </dependency>
 
+        <!-- Google Pub/Sub client library -->
+        <dependency>
+            <groupId>com.google.cloud</groupId>
+            <artifactId>google-cloud-pubsub</artifactId>
+            <version>1.132.1</version>
+        </dependency>
+
+        <!-- Guava - required by Pub/Sub, needs version 31+ for buildKeepingLast() -->
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>32.1.3-jre</version>
+        </dependency>
+
     </dependencies>
 
     <build>
