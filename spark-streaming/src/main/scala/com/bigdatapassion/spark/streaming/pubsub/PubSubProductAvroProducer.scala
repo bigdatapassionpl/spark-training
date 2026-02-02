@@ -1,12 +1,12 @@
 package com.bigdatapassion.spark.streaming.pubsub
 
 import com.github.javafaker.Faker
-import com.google.cloud.pubsub.v1.Publisher
+import com.google.cloud.pubsub.v1.{Publisher, SchemaServiceClient}
 import com.google.protobuf.ByteString
-import com.google.pubsub.v1.{PubsubMessage, TopicName}
+import com.google.pubsub.v1.{PubsubMessage, SchemaName, TopicName}
 import org.apache.avro.Schema
 import org.apache.avro.generic.{GenericData, GenericRecord}
-import org.apache.avro.io.{DatumWriter, EncoderFactory}
+import org.apache.avro.io.EncoderFactory
 import org.apache.avro.generic.GenericDatumWriter
 
 import java.io.ByteArrayOutputStream
@@ -15,15 +15,16 @@ import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 
 /**
- * Pub/Sub producer that sends Avro-encoded product messages.
+ * Pub/Sub producer that sends Avro-encoded product messages using GCP Schema Registry.
  *
  * Prerequisites:
- * 1. Create a Pub/Sub topic in GCP
- * 2. Run: gcloud auth application-default login
- * 3. Update the configuration values below
+ * 1. Create a schema in GCP Schema Registry
+ * 2. Create a Pub/Sub topic with the schema
+ * 3. Run: gcloud auth application-default login
  *
- * To create topic and subscription:
- * gcloud pubsub topics create product-avro-topic
+ * Setup commands:
+ * gcloud pubsub schemas create product-avro-schema --type=avro --definition-file=product-schema.avsc
+ * gcloud pubsub topics create product-avro-topic --schema=product-avro-schema --message-encoding=binary
  * gcloud pubsub subscriptions create product-avro-subscription --topic=product-avro-topic
  */
 object PubSubProductAvroProducer {
@@ -31,49 +32,34 @@ object PubSubProductAvroProducer {
   // Pub/Sub configuration
   val gcpProject = "bigdataworkshops"
   val topicId = "product-avro-topic"
+  val schemaId = "product-avro-schema"
 
   // Producer settings
   val messageBatchCount = 5
   val sleepMs = 2000L
 
-  // Avro schema for ProductMessage
-  val avroSchemaJson: String =
-    """
-      |{
-      |  "type": "record",
-      |  "name": "ProductMessageAvro",
-      |  "namespace": "com.bigdatapassion.pubsub.dto",
-      |  "fields": [
-      |    {"name": "creationDate", "type": ["null", "string"]},
-      |    {"name": "id", "type": ["null", "long"]},
-      |    {
-      |      "name": "product",
-      |      "type": ["null", {
-      |        "type": "record",
-      |        "name": "ProductAvro",
-      |        "fields": [
-      |          {"name": "productName", "type": ["null", "string"]},
-      |          {"name": "color", "type": ["null", "string"]},
-      |          {"name": "material", "type": ["null", "string"]},
-      |          {"name": "price", "type": ["null", "string"]},
-      |          {"name": "promotionCode", "type": ["null", "string"]}
-      |        ]
-      |      }]
-      |    }
-      |  ]
-      |}
-      |""".stripMargin
-
-  private val schema = new Schema.Parser().parse(avroSchemaJson)
-  private val productSchema = schema.getField("product").schema().getTypes.get(1)
   private val faker = new Faker()
   private val formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss")
 
   def main(args: Array[String]): Unit = {
 
+    // Fetch schema from GCP Schema Registry
+    val schemaName = SchemaName.of(gcpProject, schemaId)
+    println(s"Fetching schema from GCP Schema Registry: $schemaName")
+
+    val schemaServiceClient = SchemaServiceClient.create()
+    val gcpSchema = schemaServiceClient.getSchema(schemaName)
+    val avroSchemaJson = gcpSchema.getDefinition
+    schemaServiceClient.close()
+
+    println(s"Schema fetched successfully:\n$avroSchemaJson")
+
+    // Parse Avro schema
+    val schema = new Schema.Parser().parse(avroSchemaJson)
+    val productSchema = schema.getField("product").schema().getTypes.get(1)
+
     val topicName = TopicName.of(gcpProject, topicId)
     println(s"Publishing Avro messages to Pub/Sub topic: $topicName")
-    println(s"Using schema:\n$avroSchemaJson")
 
     val publisher = Publisher.newBuilder(topicName).build()
 
@@ -84,8 +70,8 @@ object PubSubProductAvroProducer {
         val futures = (1 to messageBatchCount).map { _ =>
           messageId += 1
 
-          val productMessage = createProductMessage(messageId)
-          val avroBytes = serializeToAvro(productMessage)
+          val productMessage = createProductMessage(messageId, schema, productSchema)
+          val avroBytes = serializeToAvro(productMessage, schema)
 
           val message = PubsubMessage.newBuilder()
             .setData(ByteString.copyFrom(avroBytes))
@@ -116,7 +102,7 @@ object PubSubProductAvroProducer {
     }
   }
 
-  private def createProductMessage(id: Long): GenericRecord = {
+  private def createProductMessage(id: Long, schema: Schema, productSchema: Schema): GenericRecord = {
     val product = new GenericData.Record(productSchema)
     product.put("productName", faker.commerce().productName())
     product.put("color", faker.commerce().color())
@@ -132,9 +118,9 @@ object PubSubProductAvroProducer {
     message
   }
 
-  private def serializeToAvro(record: GenericRecord): Array[Byte] = {
+  private def serializeToAvro(record: GenericRecord, schema: Schema): Array[Byte] = {
     val outputStream = new ByteArrayOutputStream()
-    val writer: DatumWriter[GenericRecord] = new GenericDatumWriter[GenericRecord](schema)
+    val writer = new GenericDatumWriter[GenericRecord](schema)
     val encoder = EncoderFactory.get().binaryEncoder(outputStream, null)
 
     writer.write(record, encoder)

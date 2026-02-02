@@ -2,8 +2,8 @@ package com.bigdatapassion.spark.streaming.pubsub
 
 import com.bigdatapassion.spark.core.BaseSparkApp
 import com.bigdatapassion.spark.streaming.BaseSparkStreamingApp
-import com.google.cloud.pubsub.v1.{AckReplyConsumer, MessageReceiver, Subscriber}
-import com.google.pubsub.v1.{ProjectSubscriptionName, PubsubMessage}
+import com.google.cloud.pubsub.v1.{AckReplyConsumer, MessageReceiver, SchemaServiceClient, Subscriber}
+import com.google.pubsub.v1.{ProjectSubscriptionName, PubsubMessage, SchemaName}
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.avro.functions.from_avro
 import org.apache.spark.sql.functions._
@@ -13,15 +13,17 @@ import java.util.concurrent.{ConcurrentLinkedQueue, TimeUnit}
 import scala.jdk.CollectionConverters._
 
 /**
- * Spark Streaming application that reads Avro-encoded product messages from Pub/Sub.
+ * Spark Streaming application that reads Avro-encoded product messages from Pub/Sub
+ * using GCP Schema Registry.
  *
  * Prerequisites:
- * 1. Create a Pub/Sub topic and subscription in GCP
- * 2. Run: gcloud auth application-default login
- * 3. Update the configuration values below
+ * 1. Create a schema in GCP Schema Registry
+ * 2. Create a Pub/Sub topic with the schema
+ * 3. Run: gcloud auth application-default login
  *
- * To create topic and subscription:
- * gcloud pubsub topics create product-avro-topic
+ * Setup commands:
+ * gcloud pubsub schemas create product-avro-schema --type=avro --definition-file=product-schema.avsc
+ * gcloud pubsub topics create product-avro-topic --schema=product-avro-schema --message-encoding=binary
  * gcloud pubsub subscriptions create product-avro-subscription --topic=product-avro-topic
  */
 object PubSubProductAvroReader extends BaseSparkStreamingApp with BaseSparkApp {
@@ -29,46 +31,29 @@ object PubSubProductAvroReader extends BaseSparkStreamingApp with BaseSparkApp {
   // Pub/Sub configuration
   val gcpProject = "bigdataworkshops"
   val subscriptionId = "product-avro-subscription"
+  val schemaId = "product-avro-schema"
 
   // Processing interval in milliseconds
   val processingIntervalMs = 5000L
-
-  // Avro schema (must match the producer schema)
-  val avroSchemaJson: String =
-    """
-      |{
-      |  "type": "record",
-      |  "name": "ProductMessageAvro",
-      |  "namespace": "com.bigdatapassion.pubsub.dto",
-      |  "fields": [
-      |    {"name": "creationDate", "type": ["null", "string"]},
-      |    {"name": "id", "type": ["null", "long"]},
-      |    {
-      |      "name": "product",
-      |      "type": ["null", {
-      |        "type": "record",
-      |        "name": "ProductAvro",
-      |        "fields": [
-      |          {"name": "productName", "type": ["null", "string"]},
-      |          {"name": "color", "type": ["null", "string"]},
-      |          {"name": "material", "type": ["null", "string"]},
-      |          {"name": "price", "type": ["null", "string"]},
-      |          {"name": "promotionCode", "type": ["null", "string"]}
-      |        ]
-      |      }]
-      |    }
-      |  ]
-      |}
-      |""".stripMargin
 
   def main(args: Array[String]): Unit = {
 
     val spark = createSparkSession
     import spark.implicits._
 
+    // Fetch schema from GCP Schema Registry
+    val schemaName = SchemaName.of(gcpProject, schemaId)
+    println(s"Fetching schema from GCP Schema Registry: $schemaName")
+
+    val schemaServiceClient = SchemaServiceClient.create()
+    val gcpSchema = schemaServiceClient.getSchema(schemaName)
+    val avroSchemaJson = gcpSchema.getDefinition
+    schemaServiceClient.close()
+
+    println(s"Schema fetched successfully:\n$avroSchemaJson")
+
     val subscriptionName = ProjectSubscriptionName.of(gcpProject, subscriptionId)
     println(s"Reading Avro messages from Pub/Sub subscription: $subscriptionName")
-    println(s"Using schema:\n$avroSchemaJson")
 
     // Message buffer for collecting messages from Pub/Sub
     val messageBuffer = new ConcurrentLinkedQueue[(String, Array[Byte])]()
@@ -110,7 +95,7 @@ object PubSubProductAvroReader extends BaseSparkStreamingApp with BaseSparkApp {
           val rows = messages.map { case (id, data) => Row(id, data) }
           val rawDF = spark.createDataFrame(rows.asJava, schema)
 
-          // Deserialize Avro data using Spark's native from_avro
+          // Deserialize Avro data using Spark's native from_avro with schema from registry
           val avroDF = rawDF.select(
             $"message_id",
             from_avro($"avro_data", avroSchemaJson).as("productMessage")

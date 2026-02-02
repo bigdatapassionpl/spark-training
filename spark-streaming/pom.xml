@@ -137,6 +137,13 @@
             <version>1.0.2</version>
         </dependency>
 
+        <!-- Google Cloud Pub/Sub Admin for Schema Registry -->
+        <dependency>
+            <groupId>com.google.cloud</groupId>
+            <artifactId>google-cloud-pubsub</artifactId>
+            <version>1.132.1</version>
+        </dependency>
+
     </dependencies>
 
     <build>

@@ -32,3 +32,42 @@ gcloud pubsub subscriptions create product-avro-subscription --topic=product-avr
 Run:
 1. Start PubSubProductAvroReader first
 2. Start PubSubProductAvroProducer to send messages
+
+
+To use GCP's Schema Registry, you need to:
+
+1. Create schema in GCP:
+   gcloud pubsub schemas create product-avro-schema \
+   --type=avro \
+   --definition='{
+       "type": "record",
+       "name": "ProductMessageAvro",
+       "namespace": "com.bigdatapassion.pubsub.dto",
+       "fields": [
+           {"name": "creationDate", "type": ["null", "string"]},
+           {"name": "id", "type": ["null", "long"]},
+           {
+               "name": "product",
+               "type": ["null", {
+                   "type": "record",
+                   "name": "ProductAvro",
+                   "fields": [
+                       {"name": "productName", "type": ["null", "string"]},
+                       {"name": "color", "type": ["null", "string"]},
+                       {"name": "material", "type": ["null", "string"]},
+                       {"name": "price", "type": ["null", "string"]},
+                       {"name": "promotionCode", "type": ["null", "string"]}
+                   ]
+               }]
+           }
+       ]
+   }'
+
+2. Create topic with schema:
+   gcloud pubsub topics create product-avro-topic \
+   --schema=product-avro-schema \
+   --message-encoding=binary
+
+3. Create subscription:
+   gcloud pubsub subscriptions create product-avro-subscription \
+   --topic=product-avro-topic
