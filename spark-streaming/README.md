@@ -20,9 +20,15 @@ gcloud auth application-default login
 gcloud pubsub topics create spark-word-count-topic
 gcloud pubsub subscriptions create spark-streaming-subscription --topic=spark-word-count-topic
 
-Update configuration in both files:
-- gcpProject = "your-gcp-project"
-
 Run:
 1. Start the consumer (WordCount) first
 2. Start the producer (SimpleProducer) to send messages
+
+
+Setup:
+gcloud pubsub topics create product-avro-topic
+gcloud pubsub subscriptions create product-avro-subscription --topic=product-avro-topic
+
+Run:
+1. Start PubSubProductAvroReader first
+2. Start PubSubProductAvroProducer to send messages
